@@ -99,6 +99,35 @@ variable "gpu_node_max" {
   description = "Maximum size for the GPU node group"
 }
 
+variable "video_processing_min" {
+  type        = number
+  default     = 2
+  description = "Minimum size for the video-processing node group"
+}
+
+variable "video_processing_desired" {
+  type        = number
+  default     = 4
+  description = "Desired size for the video-processing node group"
+}
+
+variable "video_processing_max" {
+  type        = number
+  default     = 8
+  description = "Maximum size for the video-processing node group"
+}
+
+variable "video_chunks_bucket" {
+  description = "Name of S3 bucket that stores video chunks"
+  type        = string
+  default     = "vlt-video-chunks-prod"
+}
+
+variable "logs_bucket" {
+  description = "Name of S3 bucket that stores logs"
+  type        = string
+  default     = "vlt-logs-prod"
+}
 
 # TODO: Add variables for:
 # - Node group instance types and sizing
