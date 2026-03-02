@@ -20,7 +20,7 @@ spec:
   - Ingress
   - Egress
 
-  # Ingress: only allow in-namespace callers + optional Prometheus scraping
+  # Ingress
   ingress:
   - from:
     - podSelector:
@@ -36,8 +36,7 @@ spec:
     - protocol: TCP
       port: 8080
 
-  # Egress: DNS + Kafka/MSK + HTTPS for AWS APIs (S3)
-  # Note: NetworkPolicy cannot target AWS services by DNS name; we allow ports, and keep this service internal.
+  # Egress
   egress:
     # DNS
     - to:
@@ -53,7 +52,7 @@ spec:
         - protocol: TCP
           port: 53
 
-    # Kafka/MSK (typical plaintext port; adjust if you use TLS/9094)
+    # Kafka/MSK
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -61,7 +60,7 @@ spec:
         - protocol: TCP
           port: 9092
 
-    # HTTPS for S3 (and other AWS APIs the app may call)
+    # HTTPS for S3
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
