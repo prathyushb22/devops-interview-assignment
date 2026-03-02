@@ -6,3 +6,18 @@
 #   - ClusterIP type
 #   - Selector matches the deployment labels
 #   - Appropriate port configuration
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-processor
+  namespace: video-analytics
+  labels:
+    app: video-processor
+spec:
+  type: ClusterIP
+  selector:
+    app: video-processor
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -6,3 +6,60 @@
 #   - Min and max replica counts
 #   - CPU and/or memory metrics with target utilization
 #   - Consider: what scaling behavior makes sense for a video processing workload?
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: video-processor
+  namespace: video-analytics
+  labels:
+    app: video-processor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: video-processor
+  # A minimum of 2 replicas allows atleast one standby pod at all times
+  minReplicas: 2
+  maxReplicas: 12
+
+  metrics:
+    # Sets 70% as target limit for CPU utilization, leaving a buffer while new pods come online
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # Sets guardrails against memory overusage
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+
+  behavior:
+    scaleUp:
+      # Wait for 30 seconds of sustained load before scaling up
+      stabilizationWindowSeconds: 30
+      # Selects more permissive rule each time (either scale 100% in a minute or 4 pods per minute)
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+    
+    # Scale down after 300 seconds of sustained low loads
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      # Remove at most 25% of pods per minute, prevents scaling down too soon
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+      selectPolicy: Max

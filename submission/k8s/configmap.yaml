@@ -5,3 +5,24 @@
 # Requirements:
 #   - Application configuration values (e.g., log level, Kafka broker, S3 bucket)
 #   - This ConfigMap should be referenced in your deployment.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: videoprocessor-config
+  namespace: video-analytics
+  labels:
+    app: video-processor
+data:
+  # Setting log_level to INFO to prevent flooding
+  LOG_LEVEL: "info"
+  WORKER_CONCURRENCY: "5"
+
+  # Kafka/MSK (Video Processor is Kafka Streams on EKS)
+  KAFKA_BOOTSTRAP_SERVERS: "b-1.video-analytics.msk.us-east-1.amazonaws.com:9092"
+  KAFKA_TOPIC: "video-fragments"
+  KAFKA_GROUP: "video-processor"
+
+  # S3 (uploads concatenated time-based chunks)
+  S3_REGION: "us-east-1"
+  S3_OUTPUT_BUCKET: "vlt-video-chunks-prod"
+  S3_OUTPUT_PREFIX: "processed/"
