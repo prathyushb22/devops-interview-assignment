@@ -93,6 +93,11 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
 
+        volumeMounts:
+        - name: tmp-dir
+          mountPath: /tmp
+        - name: video-buffer
+          mountPath: /var/video-buffer
 
       securityContext:
         # prevents the process from running as root; prevents escalated access in case of compromised pod
