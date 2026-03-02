@@ -1,7 +1,6 @@
 # pipeline.yaml — CI/CD Pipeline Definition
 #
-# TASK: Define a CI/CD pipeline for the video-analytics application.
-# Use GitHub Actions syntax (or clearly comment which CI system you're targeting).
+# GitHub Actions workflow for the video-analytics application.
 #
 # Requirements:
 #   - Build stage: compile, run unit tests
@@ -13,3 +12,150 @@
 #
 # The application is a Java service built with Gradle, containerized,
 # deployed to EKS via kubectl/helm.
+#
+name: video-analytics-ci-cd
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: video-processor
+  K8S_NAMESPACE: video-analytics
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: "gradle"
+
+      - name: Build + unit tests
+        run: ./gradlew clean test
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/build/test-results/test/**
+            **/build/reports/tests/test/**
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: "gradle"
+
+      - name: Integration tests
+        run: ./gradlew integrationTest
+
+      - name: Security scan (filesystem/container config)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: "fs"
+          ignore-unfixed: true
+          severity: "CRITICAL,HIGH"
+
+  build_and_push_image:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image
+        run: |
+          docker build -t "${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tag }}" .
+
+      - name: Push image to ECR
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          ECR="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+          docker tag "${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tag }}" "${ECR}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tag }}"
+          docker push "${ECR}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tag }}"
+
+  deploy_staging:
+    needs: build_and_push_image
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.29.0"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Deploy to staging
+        run: |
+          python3 deploy.py deploy --environment staging --image-tag "${{ needs.build_and_push_image.outputs.image_tag }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Staging deploy failed"
+          # Optional webhook:
+          # curl -X POST -H 'Content-type: application/json' --data '{"text":"Staging deploy failed"}' "$SLACK_WEBHOOK_URL"
+
+  deploy_production:
+    needs: deploy_staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.29.0"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Deploy to production
+        run: |
+          python3 deploy.py deploy --environment production --image-tag "${{ github.sha::12 }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Production deploy failed"
+          # Optional webhook:
+          # curl -X POST -H 'Content-type: application/json' --data '{"text":"Production deploy failed"}' "$SLACK_WEBHOOK_URL"
